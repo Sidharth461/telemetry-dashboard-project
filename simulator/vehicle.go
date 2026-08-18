@@ -132,5 +132,10 @@ func (v *Vehicle) Run(client mqtt.Client, interval time.Duration) {
 		}
 
 		v.publish(client, msg)
+
+		// FAULT: duplicate delivery (1%) — same message published twice
+		if v.rng.Float64() < 0.01 {
+			v.publish(client, msg)
+		}
 	}
 }

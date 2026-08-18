@@ -6,7 +6,7 @@ services:
       - "1883:1883" # MQTT protocol port
       - "18083:18083" # EMQX admin dashboard
     environment:
-      - EMQX_ANONYMOUS_ACCESS=on # bina login ke connect ho sake
+      - EMQX_ANONYMOUS_ACCESS=on
     healthcheck:
       test: ["CMD", "emqx", "ctl", "status"]
       interval: 5s
