@@ -1,0 +1,14 @@
+services:
+  emqx:
+    image: emqx/emqx:5.8.4
+    container_name: emqx
+    ports:
+      - "1883:1883" # MQTT protocol port
+      - "18083:18083" # EMQX admin dashboard
+    environment:
+      - EMQX_ANONYMOUS_ACCESS=on # bina login ke connect ho sake
+    healthcheck:
+      test: ["CMD", "emqx", "ctl", "status"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
