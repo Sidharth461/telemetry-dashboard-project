@@ -17,7 +17,7 @@ const (
 )
 
 type Telemetry struct {
-	DeviceID       string   `json:"deviceId"`
+	DeviceID       string   `json:"device-Id"`
 	TS             string   `json:"ts"`
 	State          string   `json:"state"`
 	SpeedKph       float64  `json:"speedKph"`
@@ -35,6 +35,7 @@ type Vehicle struct {
 	speedKph       float64
 	batteryPct     float64
 	odometerMeters float64
+	delayed        *Telemetry
 	rng            *rand.Rand
 }
 
@@ -130,11 +131,17 @@ func (v *Vehicle) Run(client mqtt.Client, interval time.Duration) {
 			RouteID:        fmt.Sprintf("R-%03d", v.rng.Intn(300)),
 			Faults:         []string{},
 		}
-
+		if v.delayed != nil {
+			v.publish(client, v.delayed)
+			v.delayed = nil
+		}
 		v.publish(client, msg)
 
 		// FAULT: duplicate delivery (1%) — same message published twice
 		if v.rng.Float64() < 0.01 {
+			v.publish(client, msg)
+		}
+		if v.rng.Float64() < 0.02 {
 			v.publish(client, msg)
 		}
 	}
