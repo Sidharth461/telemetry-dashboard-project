@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -20,6 +21,8 @@ func main() {
 
 	// notebook banao — ye saare vehicles ka state sambhalega
 	proc = NewProcessor(60*time.Second, 15*time.Second)
+	hub = NewHub(proc)
+	go hub.Run()
 
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(fmt.Sprintf("tcp://%s:%d", brokerHost, brokerPort))
@@ -58,9 +61,9 @@ func main() {
 		log.Fatalf("http server failed: %v", err)
 	}
 
-	// graceful shutdown
+	// graceful shutdown (SIGTERM = docker stop, SIGINT = ctrl+c)
 	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c
 	log.Println("shutting down...")
 }

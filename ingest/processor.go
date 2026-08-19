@@ -29,10 +29,10 @@ type VehicleState struct {
 	LastMessageTime       time.Time // silence/offline check for that purpose
 	IsOnline              bool
 	Window                []Sample
-	WindowDistance        float64 // last 60s ka distance
-	AvgSpeedKph           float64  // last 60s ka avg speed
-	AvgBatteryPct         float64  // last 60s ka avg battery
-	MovingPercent         float64  // last 60s mein kitna % MOVING tha
+	WindowDistance        float64 // last 60s  distance
+	AvgSpeedKph           float64 // last 60s  avg speed
+	AvgBatteryPct         float64 // last 60s  avg battery
+	MovingPercent         float64 // last 60s may how much % MOVING
 }
 type Sample struct {
 	At      time.Time
@@ -45,7 +45,7 @@ type Processor struct {
 	mu                     sync.Mutex               // race prevention
 	devicePages            map[string]*VehicleState // key = deviceId
 	window                 time.Duration            // rolling window size (60s)
-	offlineAfter           time.Duration            // kitni der silence = OFFLINE
+	offlineAfter           time.Duration            // how may much time it has been silence = OFFLINE
 	TotalMessagesReceived  int64
 	TotalDuplicatesSkipped int64
 	TotalOutOfOrderSkipped int64
@@ -110,12 +110,10 @@ func (p *Processor) Handle(payload []byte) {
 	vehicle.LastMessageTime = now
 	vehicle.IsOnline = true
 
-	// Step 6: rolling window mein sample daalo (last 60s)
 	vehicle.Window = append(vehicle.Window, Sample{
 		At: now, Odo: msg.OdometerMeters, Speed: msg.SpeedKph, Battery: msg.BatteryPct, State: msg.State,
 	})
 
-	// purane samples hatao (60s se pehle wale)
 	cutoff := now.Add(-p.window)
 	newWindow := vehicle.Window[:0]
 	for _, s := range vehicle.Window {
@@ -125,8 +123,6 @@ func (p *Processor) Handle(payload []byte) {
 	}
 	vehicle.Window = newWindow
 
-	// 60s distance = window ka aakhri odometer - pehla odometer
-	// counter reset ke baad negative ho sakta hai → 0 clamp karo
 	if len(vehicle.Window) >= 2 {
 		windowDistance := vehicle.Window[len(vehicle.Window)-1].Odo - vehicle.Window[0].Odo
 		if windowDistance < 0 {
@@ -135,7 +131,6 @@ func (p *Processor) Handle(payload []byte) {
 		vehicle.WindowDistance = windowDistance
 	}
 
-	// 60s ka avg speed + avg battery (window ke samples se)
 	var speedSum, batterySum float64
 	for _, s := range vehicle.Window {
 		speedSum += s.Speed
@@ -146,7 +141,6 @@ func (p *Processor) Handle(payload []byte) {
 		vehicle.AvgBatteryPct = batterySum / float64(n)
 	}
 
-	// moving % = window mein kitne samples MOVING the
 	movingCount := 0
 	for _, s := range vehicle.Window {
 		if s.State == "MOVING" {
@@ -158,23 +152,23 @@ func (p *Processor) Handle(payload []byte) {
 	}
 }
 
-// Snapshot = browser ko bhejne layak ek device ka data (clean copy)
+// Snapshot = Data from one device that can be sent to the browser (clean copy)
 type DeviceSnapshot struct {
-	DeviceID          string  `json:"deviceId"`
-	State             string  `json:"state"`
-	SpeedKph          float64 `json:"speedKph"`
-	BatteryPct        float64 `json:"batteryPct"`
-	OdometerMeters    float64 `json:"odometerMeters"`
-	DistanceMeters    float64 `json:"distanceMeters"`
+	DeviceID            string  `json:"deviceId"`
+	State               string  `json:"state"`
+	SpeedKph            float64 `json:"speedKph"`
+	BatteryPct          float64 `json:"batteryPct"`
+	OdometerMeters      float64 `json:"odometerMeters"`
+	DistanceMeters      float64 `json:"distanceMeters"`
 	TotalDistanceMeters float64 `json:"totalDistanceMeters"`
-	AvgSpeedKph       float64 `json:"avgSpeedKph"`
-	AvgBatteryPct     float64 `json:"avgBatteryPct"`
-	MovingPercent     float64 `json:"movingPercent"`
-	LastMessageAt     string  `json:"lastMessageAt"`
-	IsOnline          bool    `json:"isOnline"`
+	AvgSpeedKph         float64 `json:"avgSpeedKph"`
+	AvgBatteryPct       float64 `json:"avgBatteryPct"`
+	MovingPercent       float64 `json:"movingPercent"`
+	LastMessageAt       string  `json:"lastMessageAt"`
+	IsOnline            bool    `json:"isOnline"`
 }
 
-// SnapshotAll = saari gadion ke clean copies banao (list ke liye)
+// SnapshotAll = create all clean copies of all vehicle (for the list)
 func (p *Processor) SnapshotAll() []DeviceSnapshot {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -184,14 +178,14 @@ func (p *Processor) SnapshotAll() []DeviceSnapshot {
 		out = append(out, snapshotOf(v))
 	}
 
-	// deviceId ke hisaab se sort karo (map random order deta hai)
+	//sort it according to deviceId  (map gives random order )
 	sort.Slice(out, func(i, j int) bool {
 		return out[i].DeviceID < out[j].DeviceID
 	})
 	return out
 }
 
-// snapshotOf = ek device ka internal state → clean copy
+// snapshotOf = one device the internal state → clean copy
 func snapshotOf(v *VehicleState) DeviceSnapshot {
 	return DeviceSnapshot{
 		DeviceID:            v.DeviceID,
@@ -209,7 +203,7 @@ func snapshotOf(v *VehicleState) DeviceSnapshot {
 	}
 }
 
-// Sweep = har second call karo — 15s se silent device ko OFFLINE mark karo
+// Sweep = call every second — 15s still silent device mark it as OFFLINE
 func (p *Processor) Sweep() {
 	cutoff := time.Now().Add(-p.offlineAfter)
 

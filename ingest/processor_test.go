@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Test 1: pehli baar message aaya → notebook mein page bana
+// Test 1:
 func TestFirstMessageCreatesDevicePage(t *testing.T) {
 	p := NewProcessor(60*time.Second, 15*time.Second)
 
@@ -17,14 +17,14 @@ func TestFirstMessageCreatesDevicePage(t *testing.T) {
 	p.mu.Unlock()
 
 	if v == nil {
-		t.Fatal("VEH-0001 ka page nahi bana") // page hona chahiye
+		t.Fatal("record for VEH-0001 was not created") // vehicle must have record
 	}
 	if v.CurrentSpeedKph != 45 {
-		t.Fatalf("speed = %v, expected 45", v.CurrentSpeedKph) // speed 45 honi chahiye
+		t.Fatalf("speed = %v, expected 45", v.CurrentSpeedKph) // speed should be 45
 	}
 }
 
-// Test 2: counter reset — odometer 1000 se 0 → negative distance nahi
+// Test 2: counter reset — odometer 1000 to 0 → do not display negative distance
 func TestCounterResetNoNegativeDistance(t *testing.T) {
 	p := NewProcessor(60*time.Second, 15*time.Second)
 
@@ -45,13 +45,13 @@ func TestCounterResetNoNegativeDistance(t *testing.T) {
 	}
 }
 
-// Test 3: out-of-order — purana timestamp wala message latest ko overwrite nahi karega
+// Test 3: out-of-order — old timestamp message should not be overwrite latest msg
 func TestOutOfOrderNotOverwritten(t *testing.T) {
 	p := NewProcessor(60*time.Second, 15*time.Second)
 
 	// msg 1: speed 50 at 10:00:02 (latest)
 	p.Handle([]byte(`{"deviceId":"VEH-0001","ts":"2026-08-19T10:00:02.000Z","speedKph":50,"odometerMeters":1000}`))
-	// msg 2: speed 45 at 10:00:01 (PURANA) → skip
+	// msg 2: speed 45 at 10:00:01 (old) → skip
 	p.Handle([]byte(`{"deviceId":"VEH-0001","ts":"2026-08-19T10:00:01.000Z","speedKph":45,"odometerMeters":999}`))
 
 	p.mu.Lock()
@@ -67,7 +67,7 @@ func TestOutOfOrderNotOverwritten(t *testing.T) {
 func TestDuplicateSkipped(t *testing.T) {
 	p := NewProcessor(60*time.Second, 15*time.Second)
 
-	// same message 2 baar bheja (simulator ka 1% fault)
+	// same message send 2 times (simulator ka 1% fault)
 	payload := `{"deviceId":"VEH-0001","ts":"2026-08-19T10:00:00.000Z","speedKph":45,"odometerMeters":1000}`
 	p.Handle([]byte(payload))
 	p.Handle([]byte(payload))
@@ -76,4 +76,3 @@ func TestDuplicateSkipped(t *testing.T) {
 		t.Fatalf("duplicates skipped = %v, expected 1", p.TotalDuplicatesSkipped)
 	}
 }
-
