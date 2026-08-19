@@ -1,6 +1,6 @@
 export default function DeviceCard({ device }) {
   const secondsSince = Math.floor(
-    Date.now() - new Date(device.lastMessageAt).getTime(), // getting the time 1000
+    (Date.now() - new Date(device.lastMessageAt).getTime()) / 1000,
   );
   return (
     <div className="p-4 rounded-lg border bg-slate-800 border-slate-600">

@@ -1,4 +1,11 @@
-export default function StatsCard({ stats }) {
+export default function StatsCard({
+  stats = {
+    msgPerSec: 0,
+    messagesReceived: 0,
+    duplicatesSkipped: 0,
+    outOfOrderSkipped: 0,
+  },
+}) {
   return (
     <div className="mb-6 p-4 bg-slate-800 rounded-lg inline-block">
       <span className="text-4xl font-bold text-green-400">

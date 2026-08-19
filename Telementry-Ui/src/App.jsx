@@ -6,7 +6,7 @@ const App = () => {
   const [devices, setDevices] = useState([]);
   const [stats, setStats] = useState({
     msgPerSec: 0,
-    msgReceived: 0,
+    messagesReceived: 0,
     duplicatesSkipped: 0,
     outOfOrderSkipped: 0,
   });
@@ -17,7 +17,7 @@ const App = () => {
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
       setDevices(data.devices);
-      setStats(data.setStats);
+      setStats(data.stats);
     };
 
     return () => eventSource.close();
