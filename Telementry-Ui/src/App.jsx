@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import Header from "./components/Header";
+import DeviceCard from "./components/DeviceCard";
+import StatsCard from "./components/StatsCard";
 const App = () => {
   const [devices, setDevices] = useState([]);
   const [stats, setStats] = useState({
@@ -18,12 +20,11 @@ const App = () => {
       setStats(data.setStats);
     };
 
-    return () => es.close();
+    return () => eventSource.close();
   }, []);
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 p-6">
-     
       <Header />
 
       <StatsCard stats={stats} />
