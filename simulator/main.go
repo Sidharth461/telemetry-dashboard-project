@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"strconv"
 	"time"
 
@@ -38,7 +39,11 @@ func main() {
 		go v.Run(client, interval)
 	}
 
-	select {}
+	// select {}
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	<-c
+	log.Println("shutting down...")
 }
 
 func getenv(key, def string) string {
