@@ -26,6 +26,7 @@ type SimulatorConfig struct {
 func main() {
 	brokerHost := getenv("BROKER_HOST", "localhost")
 	brokerPort := getenvInt("BROKER_PORT", 1883)
+
 	region := getenv("REGION", "west-01")
 	numDevices := getenvInt("NUM_DEVICES", 20)
 	publishHz := getenvInt("PUBLISH_HZ", 5)

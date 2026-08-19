@@ -15,15 +15,18 @@ func main() {
 	brokerHost := getenv("BROKER_HOST", "localhost")
 	brokerPort := getenvInt("BROKER_PORT", 1883)
 
+	// notebook banao — ye saare vehicles ka state sambhalega
+	proc := NewProcessor()
+
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(fmt.Sprintf("tcp://%s:%d", brokerHost, brokerPort))
 	opts.SetClientID("ingest")
 	opts.SetConnectRetry(true)
 	opts.SetConnectRetryInterval(2 * time.Second)
 
-	// whatever msg will come print over here  keep it right now we will send it to processor
+	// jo bhi message aaye, processor ko bhejo — wahi 4 checks honge
 	opts.SetDefaultPublishHandler(func(c mqtt.Client, m mqtt.Message) {
-		log.Printf("got message on %s: %s", m.Topic(), string(m.Payload()))
+		proc.Handle(m.Payload())
 	})
 
 	client := mqtt.NewClient(opts)
