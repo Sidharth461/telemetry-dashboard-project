@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -11,12 +12,14 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
+var proc *Processor
+
 func main() {
 	brokerHost := getenv("BROKER_HOST", "localhost")
 	brokerPort := getenvInt("BROKER_PORT", 1883)
 
 	// notebook banao — ye saare vehicles ka state sambhalega
-	proc := NewProcessor()
+	proc = NewProcessor(60*time.Second, 15*time.Second)
 
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(fmt.Sprintf("tcp://%s:%d", brokerHost, brokerPort))
@@ -42,6 +45,18 @@ func main() {
 		log.Fatalf("mqtt subscribe failed: %v", t.Error())
 	}
 	log.Println("subscribed to fleet/+/+/telemetry")
+
+	// check every second  — which vehicle is   silent from 15sec  → OFFLINE
+	go func() {
+		for {
+			proc.Sweep()
+			time.Sleep(1 * time.Second)
+		}
+	}()
+	log.Println("HTTP server on :8080")
+	if err := http.ListenAndServe(":8080", http.HandlerFunc(handleHTTP)); err != nil {
+		log.Fatalf("http server failed: %v", err)
+	}
 
 	// graceful shutdown
 	c := make(chan os.Signal, 1)

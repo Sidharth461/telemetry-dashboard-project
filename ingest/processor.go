@@ -2,14 +2,15 @@ package main
 
 import (
 	"encoding/json"
+	"sort"
 	"sync"
 	"time"
 )
 
 type TelemetryMessage struct {
 	DeviceID       string   `json:"deviceId"`
-	Timestamp      string   `json:"ts"`    // message kab bheja gaya (ISO)
-	State          string   `json:"state"` // MOVING/IDLE/CHARGING/OFF
+	Timestamp      string   `json:"ts"`
+	State          string   `json:"state"`
 	SpeedKph       float64  `json:"speedKph"`
 	BatteryPct     float64  `json:"batteryPct"`
 	OdometerMeters float64  `json:"odometerMeters"`
@@ -23,22 +24,38 @@ type VehicleState struct {
 	CurrentSpeedKph       float64
 	CurrentBatteryPct     float64
 	CurrentOdometerMeters float64
-	TotalDistanceMeters   float64   // service start se total distance
-	LastTimestamp         string    // out-of-order check ke liye
-	LastMessageTime       time.Time // silence/offline check ke liye
+	TotalDistanceMeters   float64   // service start to total distance
+	LastTimestamp         string    // out-of-order check
+	LastMessageTime       time.Time // silence/offline check for that purpose
 	IsOnline              bool
+	Window                []Sample
+	WindowDistance        float64 // last 60s ka distance
+	AvgSpeedKph           float64  // last 60s ka avg speed
+	AvgBatteryPct         float64  // last 60s ka avg battery
+	MovingPercent         float64  // last 60s mein kitna % MOVING tha
+}
+type Sample struct {
+	At      time.Time
+	Odo     float64
+	Speed   float64
+	Battery float64
+	State   string
 }
 type Processor struct {
 	mu                     sync.Mutex               // race prevention
 	devicePages            map[string]*VehicleState // key = deviceId
+	window                 time.Duration            // rolling window size (60s)
+	offlineAfter           time.Duration            // kitni der silence = OFFLINE
 	TotalMessagesReceived  int64
 	TotalDuplicatesSkipped int64
 	TotalOutOfOrderSkipped int64
 }
 
-func NewProcessor() *Processor {
+func NewProcessor(window, offlineAfter time.Duration) *Processor {
 	return &Processor{
-		devicePages: make(map[string]*VehicleState),
+		devicePages:  make(map[string]*VehicleState),
+		window:       window,
+		offlineAfter: offlineAfter,
 	}
 }
 
@@ -52,6 +69,9 @@ func (p *Processor) Handle(payload []byte) {
 		return
 	}
 	p.TotalMessagesReceived++ // how much msg did we got
+
+	now := time.Now()
+
 	p.mu.Lock()
 	vehicle := p.devicePages[msg.DeviceID]
 	if vehicle == nil {
@@ -68,14 +88,13 @@ func (p *Processor) Handle(payload []byte) {
 		return
 	}
 	if vehicle.CurrentOdometerMeters > 0 && msg.OdometerMeters < vehicle.CurrentOdometerMeters {
-		vehicle.CurrentOdometerMeters = msg.OdometerMeters // naya odometer note karo
+		vehicle.CurrentOdometerMeters = msg.OdometerMeters //note the new odometer
 		vehicle.LastTimestamp = msg.Timestamp
 		vehicle.LastMessageTime = time.Now()
 		vehicle.IsOnline = true
-		return // distance add mat karo — reboot hai
+		return //  reboot
 	}
-	// distance = naya odometer - purana odometer
-	// sirf tab count karo jab pehle se reading ho (pehla message baseline hai)
+
 	if vehicle.CurrentOdometerMeters > 0 {
 		delta := msg.OdometerMeters - vehicle.CurrentOdometerMeters
 		if delta >= 0 {
@@ -88,6 +107,117 @@ func (p *Processor) Handle(payload []byte) {
 	vehicle.CurrentBatteryPct = msg.BatteryPct
 	vehicle.CurrentState = msg.State
 	vehicle.LastTimestamp = msg.Timestamp
-	vehicle.LastMessageTime = time.Now()
+	vehicle.LastMessageTime = now
 	vehicle.IsOnline = true
+
+	// Step 6: rolling window mein sample daalo (last 60s)
+	vehicle.Window = append(vehicle.Window, Sample{
+		At: now, Odo: msg.OdometerMeters, Speed: msg.SpeedKph, Battery: msg.BatteryPct, State: msg.State,
+	})
+
+	// purane samples hatao (60s se pehle wale)
+	cutoff := now.Add(-p.window)
+	newWindow := vehicle.Window[:0]
+	for _, s := range vehicle.Window {
+		if !s.At.Before(cutoff) {
+			newWindow = append(newWindow, s)
+		}
+	}
+	vehicle.Window = newWindow
+
+	// 60s distance = window ka aakhri odometer - pehla odometer
+	// counter reset ke baad negative ho sakta hai → 0 clamp karo
+	if len(vehicle.Window) >= 2 {
+		windowDistance := vehicle.Window[len(vehicle.Window)-1].Odo - vehicle.Window[0].Odo
+		if windowDistance < 0 {
+			windowDistance = 0
+		}
+		vehicle.WindowDistance = windowDistance
+	}
+
+	// 60s ka avg speed + avg battery (window ke samples se)
+	var speedSum, batterySum float64
+	for _, s := range vehicle.Window {
+		speedSum += s.Speed
+		batterySum += s.Battery
+	}
+	if n := len(vehicle.Window); n > 0 {
+		vehicle.AvgSpeedKph = speedSum / float64(n)
+		vehicle.AvgBatteryPct = batterySum / float64(n)
+	}
+
+	// moving % = window mein kitne samples MOVING the
+	movingCount := 0
+	for _, s := range vehicle.Window {
+		if s.State == "MOVING" {
+			movingCount++
+		}
+	}
+	if len(vehicle.Window) > 0 {
+		vehicle.MovingPercent = float64(movingCount) / float64(len(vehicle.Window)) * 100
+	}
+}
+
+// Snapshot = browser ko bhejne layak ek device ka data (clean copy)
+type DeviceSnapshot struct {
+	DeviceID          string  `json:"deviceId"`
+	State             string  `json:"state"`
+	SpeedKph          float64 `json:"speedKph"`
+	BatteryPct        float64 `json:"batteryPct"`
+	OdometerMeters    float64 `json:"odometerMeters"`
+	DistanceMeters    float64 `json:"distanceMeters"`
+	TotalDistanceMeters float64 `json:"totalDistanceMeters"`
+	AvgSpeedKph       float64 `json:"avgSpeedKph"`
+	AvgBatteryPct     float64 `json:"avgBatteryPct"`
+	MovingPercent     float64 `json:"movingPercent"`
+	LastMessageAt     string  `json:"lastMessageAt"`
+	IsOnline          bool    `json:"isOnline"`
+}
+
+// SnapshotAll = saari gadion ke clean copies banao (list ke liye)
+func (p *Processor) SnapshotAll() []DeviceSnapshot {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	out := make([]DeviceSnapshot, 0, len(p.devicePages))
+	for _, v := range p.devicePages {
+		out = append(out, snapshotOf(v))
+	}
+
+	// deviceId ke hisaab se sort karo (map random order deta hai)
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].DeviceID < out[j].DeviceID
+	})
+	return out
+}
+
+// snapshotOf = ek device ka internal state → clean copy
+func snapshotOf(v *VehicleState) DeviceSnapshot {
+	return DeviceSnapshot{
+		DeviceID:            v.DeviceID,
+		State:               v.CurrentState,
+		SpeedKph:            v.CurrentSpeedKph,
+		BatteryPct:          v.CurrentBatteryPct,
+		OdometerMeters:      v.CurrentOdometerMeters,
+		DistanceMeters:      v.WindowDistance,
+		TotalDistanceMeters: v.TotalDistanceMeters,
+		AvgSpeedKph:         v.AvgSpeedKph,
+		AvgBatteryPct:       v.AvgBatteryPct,
+		MovingPercent:       v.MovingPercent,
+		LastMessageAt:       v.LastMessageTime.Format("2006-01-02T15:04:05.000Z"),
+		IsOnline:            v.IsOnline,
+	}
+}
+
+// Sweep = har second call karo — 15s se silent device ko OFFLINE mark karo
+func (p *Processor) Sweep() {
+	cutoff := time.Now().Add(-p.offlineAfter)
+
+	p.mu.Lock()
+	for _, v := range p.devicePages {
+		if v.LastMessageTime.Before(cutoff) {
+			v.IsOnline = false
+		}
+	}
+	p.mu.Unlock()
 }
