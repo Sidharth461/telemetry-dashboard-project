@@ -11,11 +11,16 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/joho/godotenv"
 )
 
 var proc *Processor
 
 func main() {
+
+	if err := godotenv.Load(); err != nil {
+		log.Println("no .env file found, using defaults")
+	}
 	brokerHost := getenv("BROKER_HOST", "localhost")
 	brokerPort := getenvInt("BROKER_PORT", 1883)
 

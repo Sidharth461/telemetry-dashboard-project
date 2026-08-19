@@ -150,7 +150,7 @@ func (v *Vehicle) Run(client mqtt.Client, interval time.Duration) {
 
 		msg := &Telemetry{
 			DeviceID:       v.id,
-			TS:             time.Now().Format("2006-01-02T15:04:05.000Z"),
+			TS:             time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
 			State:          v.state,
 			SpeedKph:       v.speedKph,
 			BatteryPct:     v.batteryPct,
