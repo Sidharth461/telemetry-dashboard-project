@@ -3,12 +3,15 @@
 ## 3 Components
 
 ### 1. Simulator
+
 - Job: sends fake vehicle data to the MQTT broker
 
 ### 2. Ingest Service
+
 - Receives data, processes it, and exposes an API
 
 ### 3. Web UI
+
 - Shows live vehicle status
 
 Also: there is an EMQX (Bmax) broker that routes the MQTT messages.
@@ -24,6 +27,7 @@ Also: there is an EMQX (Bmax) broker that routes the MQTT messages.
 3. Sends a message every 5–10 seconds — speed, battery, odometer — all values should be realistic.
 
 ### Fault Injection (Important)
+
 - Duplicate message (1%)
 - Out-of-order message (2%)
 - Odometer glitch/skip (<1%)
@@ -42,6 +46,7 @@ This is the MQTT subscriber and the broadcaster of device snapshots.
 5. **Backpressure** — a slow subscriber should not block ingestion.
 
 ### In-memory storage / cache
+
 - Rolling 60-second window for averages
 - Last transition log, live subscribe
 - Throttled update/broadcast for devices
@@ -49,11 +54,21 @@ This is the MQTT subscriber and the broadcaster of device snapshots.
 ---
 
 ## 3. Web UI (React)
+
 - Rigid watchdog
 - Vehicle card: id, state, speed, battery, distance
 - "Time since last update"
 
 ---
 
-## Decision
-**SSE confirmed — not WebSocket, we'll use Server-Sent Events (current code already has SSE).**
+## Streaming: SSE (not WebSocket)
+
+I chose Server-Sent Events over WebSocket for the live updates.
+
+Why:
+
+- The UI only needs one-way updates — server pushes vehicle data to the browser, the browser never sends anything back. SSE is built exactly for this.
+- SSE works over plain HTTP, so no extra library or connection handling is needed on the client side.
+- WebSocket is two-way and better suited for chat or games, which is not what we have here.
+
+So for a live dashboard, SSE was the simpler and cleaner choice
