@@ -19,9 +19,9 @@ func main() {
 	brokerHost := getenv("BROKER_HOST", "localhost")
 	brokerPort := getenvInt("BROKER_PORT", 1883)
 
-	// notebook banao — ye saare vehicles ka state sambhalega
+	// create the processor — it keeps state for all vehicles
 	proc = NewProcessor(60*time.Second, 15*time.Second)
-	hub = NewHub(proc)
+	hub = NewHub(proc) // send data in 1s to browser
 	go hub.Run()
 
 	opts := mqtt.NewClientOptions()
@@ -30,9 +30,9 @@ func main() {
 	opts.SetConnectRetry(true)
 	opts.SetConnectRetryInterval(2 * time.Second)
 
-	// jo bhi message aaye, processor ko bhejo — wahi 4 checks honge
+	// send every incoming message to the processor — it runs the fault checks
 	opts.SetDefaultPublishHandler(func(c mqtt.Client, m mqtt.Message) {
-		proc.Handle(m.Payload())
+		proc.Handle(m.Payload()) // whatever message bytes give it to the processor
 	})
 
 	client := mqtt.NewClient(opts)
@@ -49,7 +49,7 @@ func main() {
 	}
 	log.Println("subscribed to fleet/+/+/telemetry")
 
-	// check every second  — which vehicle is   silent from 15sec  → OFFLINE
+	// check every second — which vehicle has been silent for 15s → OFFLINE
 	go func() {
 		for {
 			proc.Sweep()
@@ -57,7 +57,8 @@ func main() {
 		}
 	}()
 	log.Println("HTTP server on :8080")
-	if err := http.ListenAndServe(":8080", http.HandlerFunc(handleHTTP)); err != nil {
+	err := http.ListenAndServe(":8080", http.HandlerFunc(handleHTTP))
+	if err != nil {
 		log.Fatalf("http server failed: %v", err)
 	}
 
