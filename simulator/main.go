@@ -11,12 +11,29 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
+type SimulatorConfig struct {
+	BrokerHost       string
+	BrokerPort       int
+	Region           string
+	NumberDevices    int
+	PublishHz        int
+	DuplicateRate    float64
+	OutOfOrderRate   float64
+	CounterResetRate float64
+	SilentRate       float64
+}
+
 func main() {
 	brokerHost := getenv("BROKER_HOST", "localhost")
 	brokerPort := getenvInt("BROKER_PORT", 1883)
 	region := getenv("REGION", "west-01")
 	numDevices := getenvInt("NUM_DEVICES", 20)
 	publishHz := getenvInt("PUBLISH_HZ", 5)
+
+	dupRate := getenvFloat("DUP_RATE", 0.01)
+	outofRate := getenvFloat("OUT_OF_ORDER_RATE", 0.02)
+	resetRate := getenvFloat("RESET_RATE", 0.001)
+	silentRate := getenvFloat("SILENT_RATE", 0.005)
 
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(fmt.Sprintf("tcp://%s:%d", brokerHost, brokerPort))
@@ -35,7 +52,7 @@ func main() {
 
 	interval := time.Second / time.Duration(publishHz)
 	for i := 0; i < numDevices; i++ {
-		v := NewVehicle(region, fmt.Sprintf("VEH-%04d", i+1))
+		v := NewVehicle(region, fmt.Sprintf("VEH-%04d", i+1), dupRate, outofRate, resetRate, silentRate)
 		go v.Run(client, interval)
 	}
 
@@ -60,6 +77,17 @@ func getenvInt(key string, def int) int {
 		n, err := strconv.Atoi(v)
 		if err == nil {
 			return n
+		}
+	}
+	return def
+}
+
+func getenvFloat(key string, def float64) float64 {
+	v := os.Getenv(key)
+	if v != "" {
+		f, err := strconv.ParseFloat(v, 64)
+		if err == nil {
+			return f
 		}
 	}
 	return def

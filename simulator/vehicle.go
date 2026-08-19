@@ -38,13 +38,20 @@ type Vehicle struct {
 	delayed        *Telemetry
 	silent         bool
 	silentUntil    int64
+	dupRate        float64
+	outofRate      float64
+	resetRate      float64
+	silentRate     float64
 	rng            *rand.Rand
 }
 
-func NewVehicle(region, id string) *Vehicle {
+var seedCounter int64
+
+func NewVehicle(region, id string, dupRate, outofRate, resetRate, silentRate float64) *Vehicle {
 	now := time.Now().UnixMilli()
+	seedCounter++
 	// Each Vehicle has its own random seed - And each Behaves Different
-	seed := time.Now().UnixNano() + int64(id[4])
+	seed := time.Now().UnixNano() + seedCounter
 	return &Vehicle{
 		id:             id,
 		region:         region,
@@ -52,6 +59,10 @@ func NewVehicle(region, id string) *Vehicle {
 		dwellUntil:     now,
 		batteryPct:     40 + rand.Float64()*60,
 		odometerMeters: 100000 + rand.Float64()*200000,
+		dupRate:        dupRate,
+		outofRate:      outofRate,
+		resetRate:      resetRate,
+		silentRate:     silentRate,
 		rng:            rand.New(rand.NewSource(seed)),
 	}
 }
@@ -72,7 +83,7 @@ func (v *Vehicle) step() {
 		v.speedKph = 0
 	}
 	v.batteryPct = max(0, min(100, v.batteryPct))
-	if v.rng.Float64() < 0.001 {
+	if v.rng.Float64() < v.resetRate {
 		v.odometerMeters = 0
 	}
 	v.maybeTransition()
@@ -131,7 +142,7 @@ func (v *Vehicle) Run(client mqtt.Client, interval time.Duration) {
 			v.silent = false
 		}
 
-		if !v.silent && v.rng.Float64() < 0.005 {
+		if !v.silent && v.rng.Float64() < v.silentRate {
 			v.silent = true
 			v.silentUntil = time.Now().UnixMilli() + int64(30000+v.rng.Float64()*30000)
 		}
@@ -154,12 +165,12 @@ func (v *Vehicle) Run(client mqtt.Client, interval time.Duration) {
 		v.publish(client, msg)
 
 		// FAULT: duplicate delivery (1%) — same message published twice
-		if v.rng.Float64() < 0.01 {
+		if v.rng.Float64() < v.dupRate {
 			v.publish(client, msg)
 		}
 
 		// FAULT: out-of-order (2%) — Keep current msg hold and send it later
-		if v.rng.Float64() < 0.02 {
+		if v.rng.Float64() < v.outofRate {
 			v.delayed = msg
 		}
 	}
