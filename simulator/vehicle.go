@@ -17,7 +17,7 @@ const (
 )
 
 type Telemetry struct {
-	DeviceID       string   `json:"device-Id"`
+	DeviceID       string   `json:"deviceId"`
 	TS             string   `json:"ts"`
 	State          string   `json:"state"`
 	SpeedKph       float64  `json:"speedKph"`
@@ -36,6 +36,8 @@ type Vehicle struct {
 	batteryPct     float64
 	odometerMeters float64
 	delayed        *Telemetry
+	silent         bool
+	silentUntil    int64
 	rng            *rand.Rand
 }
 
@@ -70,6 +72,9 @@ func (v *Vehicle) step() {
 		v.speedKph = 0
 	}
 	v.batteryPct = max(0, min(100, v.batteryPct))
+	if v.rng.Float64() < 0.001 {
+		v.odometerMeters = 0
+	}
 	v.maybeTransition()
 }
 
@@ -117,8 +122,19 @@ func (v *Vehicle) publish(client mqtt.Client, m *Telemetry) {
 
 func (v *Vehicle) Run(client mqtt.Client, interval time.Duration) {
 	for {
-		time.Sleep(interval) //200ms ruko (interval = 1s/5Hz)
+		time.Sleep(interval) //200ms (interval = 1s/5Hz)
 
+		if v.silent && time.Now().UnixMilli() < v.silentUntil {
+			continue
+		}
+		if v.silent && time.Now().UnixMilli() >= v.silentUntil {
+			v.silent = false
+		}
+
+		if !v.silent && v.rng.Float64() < 0.005 {
+			v.silent = true
+			v.silentUntil = time.Now().UnixMilli() + int64(30000+v.rng.Float64()*30000)
+		}
 		v.step() // state machine update
 
 		msg := &Telemetry{
@@ -141,8 +157,10 @@ func (v *Vehicle) Run(client mqtt.Client, interval time.Duration) {
 		if v.rng.Float64() < 0.01 {
 			v.publish(client, msg)
 		}
+
+		// FAULT: out-of-order (2%) — Keep current msg hold and send it later
 		if v.rng.Float64() < 0.02 {
-			v.publish(client, msg)
+			v.delayed = msg
 		}
 	}
 }
