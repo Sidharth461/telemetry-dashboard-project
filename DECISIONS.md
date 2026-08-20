@@ -28,9 +28,9 @@ Also: there is an EMQX (Bmax) broker that routes the MQTT messages.
 
 ### Fault Injection (Important)
 
-- Duplicate message (1%)
-- Out-of-order message (2%)
-- Odometer glitch/skip (<1%)
+- Duplicate message (1%) if same arrive 2 times then skip the other one it should not Update
+- Out-of-order message (2%) the lastTimeStamp msg should not overwrite the current one
+- Odometer glitch/skip (<1%) distnace dont count make it odometer to 0
 - Some devices will go silent
 
 ---
